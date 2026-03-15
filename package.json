@@ -1,0 +1,26 @@
+{
+  "name": "circles-groups-manager",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5184",
+    "build": "vite build",
+    "preview": "vite preview --port 5184"
+  },
+  "dependencies": {
+    "@aboutcircles/miniapp-sdk": "^0.1.23",
+    "@aboutcircles/sdk-core": "^0.1.24",
+    "@aboutcircles/sdk-profiles": "^0.1.24",
+    "@aboutcircles/sdk-rpc": "^0.1.24",
+    "@aboutcircles/sdk-transfers": "^0.1.24",
+    "@aboutcircles/sdk-utils": "^0.1.23",
+    "@safe-global/safe-deployments": "^1.37.51",
+    "marked": "^17.0.4",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1",
+    "vite-plugin-node-polyfills": "^0.25.0"
+  }
+}
