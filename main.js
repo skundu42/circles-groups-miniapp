@@ -94,6 +94,7 @@ let loadedMembersGroupAddress = null;
 let membersLoadRequestId = 0;
 let ownerSafeOwners = [];
 let ownerSafeThreshold = null;
+let activeMembershipConditions = [];
 let ownerSafeDetailsLoadRequestId = 0;
 let cachedMintableAmount = 0n;
 let currentView = 'login';
@@ -173,6 +174,14 @@ const ownerSafeOwnersListEl = document.getElementById('owner-safe-owners-list');
 const addOwnerInput = document.getElementById('add-owner-input');
 const addOwnerSafeBtn = document.getElementById('add-owner-safe-btn');
 const ownerSafeSearchResultsEl = document.getElementById('owner-safe-search-results');
+const serviceAddressInput = document.getElementById('service-address-input');
+const updateServiceBtn = document.getElementById('update-service-btn');
+const feeCollectionInput = document.getElementById('fee-collection-input');
+const updateFeeCollectionBtn = document.getElementById('update-fee-collection-btn');
+const membershipConditionsListEl = document.getElementById('membership-conditions-list');
+const membershipConditionInput = document.getElementById('membership-condition-input');
+const enableMembershipConditionBtn = document.getElementById('enable-membership-condition-btn');
+const disableMembershipConditionBtn = document.getElementById('disable-membership-condition-btn');
 const saveProfileBtn = document.getElementById('save-profile-btn');
 
 const memberQueryInput = document.getElementById('member-query');
@@ -367,6 +376,17 @@ function resetOwnerSafeState() {
   addOwnerInput.value = '';
   ownerSafeOwnersListEl.innerHTML = '<p class="muted">Open a group to load Group Admins.</p>';
   clearOwnerSafeSearchResults();
+}
+
+function resetMembershipConditionsState() {
+  activeMembershipConditions = [];
+  if (membershipConditionInput) {
+    membershipConditionInput.value = '';
+  }
+  if (membershipConditionsListEl) {
+    membershipConditionsListEl.innerHTML =
+      '<p class="muted">Open a group to load membership conditions.</p>';
+  }
 }
 
 function showGroupManagementMenu() {
@@ -1120,6 +1140,47 @@ async function loadOwnerSafeDetails() {
     ownerSafeOwners = [];
     ownerSafeThreshold = null;
     ownerSafeOwnersListEl.innerHTML = `<p class="muted">Could not load Group Admins: ${escapeHtml(decodeError(err))}</p>`;
+  }
+}
+
+function renderMembershipConditions() {
+  if (!membershipConditionsListEl) return;
+
+  if (!activeMembershipConditions.length) {
+    membershipConditionsListEl.innerHTML = '<p class="muted">No active membership conditions.</p>';
+    return;
+  }
+
+  membershipConditionsListEl.innerHTML = activeMembershipConditions
+    .map(
+      (condition) => `
+        <div class="list-row search-result-row">
+          <div class="list-row-main">
+            <div class="list-row-title mono">${escapeHtml(condition)}</div>
+            <div class="list-row-meta">Enabled membership condition</div>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
+async function loadMembershipConditions() {
+  if (!activeGroupAvatar?.baseGroup || !membershipConditionsListEl) {
+    resetMembershipConditionsState();
+    return;
+  }
+
+  membershipConditionsListEl.innerHTML = '<p class="muted">Loading membership conditions…</p>';
+
+  try {
+    const conditions = await activeGroupAvatar.baseGroup.getMembershipConditions();
+    activeMembershipConditions = normalizeAddressList(conditions || []);
+    renderMembershipConditions();
+  } catch (err) {
+    activeMembershipConditions = [];
+    membershipConditionsListEl.innerHTML =
+      `<p class="muted">Could not load membership conditions: ${escapeHtml(decodeError(err))}</p>`;
   }
 }
 
@@ -2198,6 +2259,52 @@ async function saveProfile() {
   }
 }
 
+async function updateGroupAddressSetting({
+  inputEl,
+  buttonEl,
+  currentValue,
+  emptyError,
+  unchangedError,
+  pendingMessage,
+  successMessage,
+  failureMessage,
+  setter,
+}) {
+  if (!activeGroupAvatar || !activeGroupMeta) {
+    showResult('error', 'Open a group first.');
+    return;
+  }
+
+  let nextAddress;
+  try {
+    nextAddress = getAddress(String(inputEl?.value || '').trim());
+  } catch {
+    showResult('error', emptyError);
+    return;
+  }
+
+  if (currentValue && nextAddress.toLowerCase() === currentValue.toLowerCase()) {
+    showResult('error', unchangedError);
+    return;
+  }
+
+  buttonEl.disabled = true;
+  showResult('pending', pendingMessage);
+
+  try {
+    lastTxHashes = [];
+    await setter(nextAddress);
+    const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
+    showResult('success', `${successMessage(nextAddress)}${links}`);
+    inputEl.value = nextAddress;
+    await openGroup(activeGroupMeta.group, true);
+  } catch (err) {
+    showResult('error', `${failureMessage}${decodeError(err)}`);
+  } finally {
+    buttonEl.disabled = false;
+  }
+}
+
 async function updateGroupOwner() {
   if (!activeGroupAvatar || !activeGroupMeta) {
     showResult('error', 'Open a group first.');
@@ -2231,6 +2338,89 @@ async function updateGroupOwner() {
     showResult('error', `Could not update owner Safe: ${decodeError(err)}`);
   } finally {
     updateOwnerBtn.disabled = false;
+  }
+}
+
+async function updateGroupService() {
+  return updateGroupAddressSetting({
+    inputEl: serviceAddressInput,
+    buttonEl: updateServiceBtn,
+    currentValue: activeGroupMeta?.service || '',
+    emptyError: 'Enter a valid service address.',
+    unchangedError: 'That address is already the service.',
+    pendingMessage: 'Updating service address…',
+    successMessage: (nextAddress) => `Service updated to ${nextAddress}.`,
+    failureMessage: 'Could not update service address: ',
+    setter: (nextAddress) => activeGroupAvatar.setProperties.service(nextAddress),
+  });
+}
+
+async function updateGroupFeeCollection() {
+  return updateGroupAddressSetting({
+    inputEl: feeCollectionInput,
+    buttonEl: updateFeeCollectionBtn,
+    currentValue: activeGroupMeta?.feeCollection || '',
+    emptyError: 'Enter a valid fee collection address.',
+    unchangedError: 'That address is already the fee collection address.',
+    pendingMessage: 'Updating fee collection address…',
+    successMessage: (nextAddress) => `Fee collection updated to ${nextAddress}.`,
+    failureMessage: 'Could not update fee collection address: ',
+    setter: (nextAddress) => activeGroupAvatar.setProperties.feeCollection(nextAddress),
+  });
+}
+
+async function updateMembershipCondition(enabled) {
+  if (!activeGroupAvatar || !activeGroupMeta) {
+    showResult('error', 'Open a group first.');
+    return;
+  }
+
+  let condition;
+  try {
+    condition = getAddress(String(membershipConditionInput?.value || '').trim());
+  } catch {
+    showResult('error', 'Enter a valid membership condition address.');
+    return;
+  }
+
+  const isAlreadyActive = activeMembershipConditions.some(
+    (entry) => entry.toLowerCase() === condition.toLowerCase()
+  );
+
+  if (enabled && isAlreadyActive) {
+    showResult('error', 'That membership condition is already enabled.');
+    return;
+  }
+
+  if (!enabled && !isAlreadyActive) {
+    showResult('error', 'That membership condition is not currently enabled.');
+    return;
+  }
+
+  const activeButton = enabled ? enableMembershipConditionBtn : disableMembershipConditionBtn;
+  const idleButton = enabled ? disableMembershipConditionBtn : enableMembershipConditionBtn;
+  activeButton.disabled = true;
+  idleButton.disabled = true;
+  showResult('pending', enabled ? 'Enabling membership condition…' : 'Disabling membership condition…');
+
+  try {
+    lastTxHashes = [];
+    await activeGroupAvatar.setProperties.membershipCondition(condition, enabled);
+    const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
+    showResult(
+      'success',
+      `${enabled ? 'Enabled' : 'Disabled'} membership condition ${condition}.${links}`
+    );
+    membershipConditionInput.value = '';
+    await loadMembershipConditions();
+  } catch (err) {
+    showResult(
+      'error',
+      `Could not ${enabled ? 'update' : 'remove'} membership condition: ${decodeError(err)}`
+    );
+  } finally {
+    activeButton.disabled = false;
+    idleButton.disabled = false;
   }
 }
 
@@ -2449,15 +2639,18 @@ async function openGroup(groupAddress, preserveResult = false) {
     setAddressLink(overviewServiceAddressEl, activeGroupMeta.service);
     setAddressLink(overviewFeeCollectionAddressEl, activeGroupMeta.feeCollection);
     ownerSafeInput.value = activeOwnerSafe || '';
+    serviceAddressInput.value = activeGroupMeta.service || '';
+    feeCollectionInput.value = activeGroupMeta.feeCollection || '';
     resetMembersState();
     resetOwnerSafeState();
+    resetMembershipConditionsState();
     mintAmountInput.value = '';
     sendRecipientInput.value = '';
     sendAmountInput.value = '';
     clearSendSearchResults();
 
     showGroupView();
-    await Promise.all([populateProfileEditor(), loadTreasuryPanels()]);
+    await Promise.all([populateProfileEditor(), loadTreasuryPanels(), loadMembershipConditions()]);
     if (!preserveResult) hideResult();
   } catch (err) {
     showResult('error', `Could not open group: ${decodeError(err)}`);
@@ -2491,6 +2684,7 @@ onWalletChange(async (address) => {
   cachedMintableAmount = 0n;
   lastTxHashes = [];
   resetOwnerSafeState();
+  resetMembershipConditionsState();
   clearMemberSearchResults();
   clearSendSearchResults();
   showGroupManagementMenu();
@@ -2583,6 +2777,10 @@ profileLinkUrlInput?.addEventListener('input', (event) => {
   handleExternalLinkInput('profile', 'url', event.target.value);
 });
 updateOwnerBtn.addEventListener('click', updateGroupOwner);
+updateServiceBtn.addEventListener('click', updateGroupService);
+updateFeeCollectionBtn.addEventListener('click', updateGroupFeeCollection);
+enableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(true));
+disableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(false));
 addOwnerInput.addEventListener('input', updateOwnerSafeSearchResults);
 addOwnerSafeBtn.addEventListener('click', addOwnerToOwnerSafe);
 saveProfileBtn.addEventListener('click', saveProfile);

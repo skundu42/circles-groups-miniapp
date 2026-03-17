@@ -88,6 +88,15 @@ class BaseGroupAvatarClient {
     owner: async (newOwner) => {
       return this.runner.sendTransaction([this.baseGroup.setOwner(newOwner)]);
     },
+    service: async (newService) => {
+      return this.runner.sendTransaction([this.baseGroup.setService(newService)]);
+    },
+    feeCollection: async (newFeeCollection) => {
+      return this.runner.sendTransaction([this.baseGroup.setFeeCollection(newFeeCollection)]);
+    },
+    membershipCondition: async (condition, enabled) => {
+      return this.runner.sendTransaction([this.baseGroup.setMembershipCondition(condition, enabled)]);
+    },
   };
 
   transfer = {
