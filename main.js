@@ -193,6 +193,7 @@ const membersPageLabelEl = document.getElementById('members-page-label');
 const membersPrevBtn = document.getElementById('members-prev-btn');
 const membersNextBtn = document.getElementById('members-next-btn');
 
+const overviewCollateralTotalEl = document.getElementById('overview-collateral-total');
 const overviewCollateralListEl = document.getElementById('overview-collateral-list');
 const overviewHoldersListEl = document.getElementById('overview-holders-list');
 const overviewHoldersLabelEl = document.getElementById('overview-holders-label');
@@ -301,6 +302,7 @@ function showDisconnectedState() {
   resetMembersState();
   resetOwnerSafeState();
   ownerSafeInput.value = '';
+  overviewCollateralTotalEl.textContent = '';
   overviewCollateralListEl.innerHTML = '<p class="muted">Open a group to load treasury balances.</p>';
   overviewHoldersListEl.innerHTML = '<p class="muted">Open a group to load token holders.</p>';
   overviewGroupTypeEl.textContent = '—';
@@ -2175,8 +2177,11 @@ async function loadTreasuryPanels() {
   if (collateralResult.status === 'fulfilled') {
     const collateral = collateralResult.value || [];
     if (!collateral.length) {
+      overviewCollateralTotalEl.textContent = '';
       overviewCollateralListEl.innerHTML = '<p class="muted">No treasury collateral found.</p>';
     } else {
+      const totalAtto = collateral.reduce((sum, b) => sum + getCollateralAmount(b), 0n);
+      overviewCollateralTotalEl.textContent = `${attoToCirclesString(totalAtto)} CRC across ${collateral.length} token${collateral.length === 1 ? '' : 's'}`;
       overviewCollateralListEl.innerHTML = collateral
         .map(
           (balance) => `
@@ -2192,6 +2197,7 @@ async function loadTreasuryPanels() {
         .join('');
     }
   } else {
+    overviewCollateralTotalEl.textContent = '';
     overviewCollateralListEl.innerHTML = `<p class="muted">Could not load treasury data: ${escapeHtml(decodeError(collateralResult.reason))}</p>`;
   }
 
