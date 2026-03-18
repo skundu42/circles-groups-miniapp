@@ -28,7 +28,7 @@ const RPC_FALLBACK_URLS = [
   'https://1rpc.io/gnosis',
 ];
 const SAFE_VERSION = '1.4.1';
-const SAFE_TX_SERVICE_URL = 'https://safe-transaction-gnosis-chain.safe.global';
+const SAFE_TX_SERVICE_URL = 'https://api.safe.global/tx-service/gno';
 const TX_RECEIPT_TIMEOUT_MS = 12 * 60 * 1000;
 const TX_RECEIPT_POLL_MS = 3000;
 const USER_OP_LOOKBACK_BLOCKS = 5000n;
