@@ -190,10 +190,37 @@ h2 {
   line-height: 1.5;
   font-size: 13px;
   margin-bottom: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-content {
+  min-width: 0;
+  flex: 1;
 }
 
 .result a {
   color: inherit;
+}
+
+.result-close {
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0.82;
+}
+
+.result-close:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 .result-pending {
@@ -208,10 +235,84 @@ h2 {
   color: var(--success);
 }
 
+.result-warning {
+  background: var(--warn-soft);
+  border-color: rgba(138, 72, 44, 0.24);
+  color: var(--warn);
+}
+
 .result-error {
   background: var(--danger-soft);
   border-color: rgba(127, 29, 29, 0.2);
   color: var(--danger);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(5, 6, 26, 0.42);
+  backdrop-filter: blur(8px);
+}
+
+.modal-card {
+  width: min(100%, 460px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: 0 20px 80px rgba(5, 6, 26, 0.18);
+  padding: 20px;
+}
+
+.modal-head {
+  margin-bottom: 10px;
+}
+
+.modal-copy {
+  margin: 0 0 18px;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.modal-actions .btn-primary,
+.modal-actions .btn-tonal {
+  margin-top: 0;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-actions .btn-primary {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-actions .btn-tonal {
+  width: auto;
+  flex-shrink: 0;
+  padding-inline: 20px;
+}
+
+@media (max-width: 560px) {
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn-primary,
+  .modal-actions .btn-tonal {
+    width: 100%;
+  }
 }
 
 /* ── Section & panels ── */
@@ -289,11 +390,63 @@ h2 {
   white-space: nowrap;
 }
 
+.group-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .group-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.group-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 360px);
+}
+
+.hero-stat {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(14, 0, 168, 0.1);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(234, 232, 255, 0.55)),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.hero-stat-wide {
+  grid-column: 1 / -1;
+}
+
+.hero-stat-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-stat-value {
+  display: block;
+  font-size: clamp(20px, 2.1vw, 26px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+
+.hero-stat-value-balance {
+  font-size: clamp(16px, 1.6vw, 21px);
+  line-height: 1.15;
 }
 
 .inline-label {
@@ -353,10 +506,38 @@ h2 {
   border-top: 0;
 }
 
+.info-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(14, 0, 168, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(234, 232, 255, 0.7), rgba(255, 255, 255, 0.95));
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .management-subsection-title {
   margin: 0 0 12px;
   font-size: 15px;
   letter-spacing: 0.01em;
+}
+
+.management-subsection-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.management-subsection-header .management-subsection-title {
+  margin-bottom: 0;
+}
+
+.send-availability-card {
+  min-width: 180px;
+  padding: 10px 12px;
 }
 
 .management-picker {
@@ -927,6 +1108,11 @@ button:disabled {
     align-items: flex-start;
   }
 
+  .group-header-right {
+    width: 100%;
+    align-items: flex-start;
+  }
+
   .group-header-actions {
     width: 100%;
     justify-content: flex-start;
@@ -936,6 +1122,19 @@ button:disabled {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+  }
+
+  .group-stats-grid {
+    width: 100%;
+  }
+
+  .management-subsection-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .send-availability-card {
+    min-width: 0;
   }
 
   .group-address-inline {

@@ -82,6 +82,7 @@ let activeGroupSdk = null;
 let activeGroupAvatar = null;
 let activeGroupMeta = null;
 let activeOwnerSafe = null;
+let activeMemberCount = null;
 let lastTxHashes = [];
 let activeGroups = [];
 let cachedMembers = [];
@@ -96,7 +97,9 @@ let ownerSafeOwners = [];
 let ownerSafeThreshold = null;
 let activeMembershipConditions = [];
 let ownerSafeDetailsLoadRequestId = 0;
-let cachedMintableAmount = 0n;
+let cachedFeeConvertibleAmount = 0n;
+let cachedFeeSourceTokens = [];
+let cachedFeeAddressGroupTokenAmount = 0n;
 let currentView = 'login';
 const groupPreviewImageByAddress = new Map();
 let createImageDataUrl = '';
@@ -110,7 +113,6 @@ let ownerSearchDebounceTimer = null;
 let sendSearchRequestId = 0;
 let sendSearchDebounceTimer = null;
 let adminGroupsLoadRequestId = 0;
-let resultHideTimer = null;
 const sessionOwnerSafesByUser = new Map();
 const createExternalLink = { label: '', url: '' };
 const profileExternalLink = { label: '', url: '' };
@@ -118,7 +120,6 @@ const profileExternalLink = { label: '', url: '' };
 const badge = document.getElementById('badge');
 const resultEl = document.getElementById('result');
 const breadcrumbEl = document.getElementById('breadcrumb');
-const breadcrumbHomeBtn = document.getElementById('breadcrumb-home');
 
 const loginSection = document.getElementById('login-section');
 const groupsSection = document.getElementById('groups-section');
@@ -138,12 +139,16 @@ const clearCreateImageBtn = document.getElementById('clear-create-image-btn');
 const createLinkLabelInput = document.getElementById('create-link-label');
 const createLinkUrlInput = document.getElementById('create-link-url');
 
+const editGroupBtn = document.getElementById('edit-group-btn');
 const refreshGroupBtn = document.getElementById('refresh-group-btn');
 const switchGroupsBtn = document.getElementById('switch-groups-btn');
 const groupCoverEl = document.getElementById('group-cover');
 const groupSymbolDisplay = document.getElementById('group-symbol-display');
 const groupNameDisplay = document.getElementById('group-name-display');
 const groupDescriptionDisplay = document.getElementById('group-description-display');
+const groupMemberCountDisplay = document.getElementById('group-member-count-display');
+const groupFeeBalanceDisplay = document.getElementById('group-fee-balance-display');
+const groupAffiliateCountDisplay = document.getElementById('group-affiliate-count-display');
 const groupAddressDisplay = document.getElementById('group-address-display');
 const groupManagementMenuEl = document.getElementById('group-management-menu');
 const groupOverviewPanelEl = document.getElementById('group-overview-panel');
@@ -184,6 +189,15 @@ const enableMembershipConditionBtn = document.getElementById('enable-membership-
 const disableMembershipConditionBtn = document.getElementById('disable-membership-condition-btn');
 const saveProfileBtn = document.getElementById('save-profile-btn');
 
+const feeCollectionBalanceDisplay = document.getElementById('fee-collection-balance-display');
+const convertibleFeesDisplay = document.getElementById('convertible-fees-display');
+const convertibleLabelEl = document.getElementById('convertible-label');
+const feeAddressGroupTokenDisplay = document.getElementById('fee-address-group-token-display');
+const collectFeesAmountInput = document.getElementById('collect-fees-amount');
+const collectFeesAmountLabelEl = document.getElementById('collect-fees-amount-label');
+const collectFeesMaxBtn = document.getElementById('collect-fees-max-btn');
+const collectFeesBtn = document.getElementById('collect-fees-btn');
+
 const memberQueryInput = document.getElementById('member-query');
 const addMemberBtn = document.getElementById('add-member-btn');
 const memberSearchResultsEl = document.getElementById('member-search-results');
@@ -193,48 +207,85 @@ const membersPageLabelEl = document.getElementById('members-page-label');
 const membersPrevBtn = document.getElementById('members-prev-btn');
 const membersNextBtn = document.getElementById('members-next-btn');
 
-const overviewCollateralTotalEl = document.getElementById('overview-collateral-total');
-const overviewCollateralListEl = document.getElementById('overview-collateral-list');
-const overviewHoldersListEl = document.getElementById('overview-holders-list');
-const overviewHoldersLabelEl = document.getElementById('overview-holders-label');
 const groupTokenCardTitleEl = document.getElementById('group-token-card-title');
 const groupTokenCardCopyEl = document.getElementById('group-token-card-copy');
 const groupTokenPanelTitleEl = document.getElementById('group-token-panel-title');
-const groupTokenMintTitleEl = document.getElementById('group-token-mint-title');
 const groupTokenSendTitleEl = document.getElementById('group-token-send-title');
-const mintableDisplay = document.getElementById('mintable-display');
-const mintAmountLabelEl = document.getElementById('mint-amount-label');
-const mintAmountInput = document.getElementById('mint-amount');
-const mintMaxBtn = document.getElementById('mint-max-btn');
-const mintGroupBtn = document.getElementById('mint-group-btn');
 const sendRecipientInput = document.getElementById('send-recipient');
 const sendSearchResultsEl = document.getElementById('send-search-results');
 const sendAmountLabelEl = document.getElementById('send-amount-label');
 const sendAmountInput = document.getElementById('send-amount');
+const sendMaxBtn = document.getElementById('send-max-btn');
 const sendGroupBtn = document.getElementById('send-group-btn');
+const confirmModalEl = document.getElementById('confirm-modal');
+const confirmModalTitleEl = document.getElementById('confirm-modal-title');
+const confirmModalMessageEl = document.getElementById('confirm-modal-message');
+const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel');
+const confirmModalConfirmBtn = document.getElementById('confirm-modal-confirm');
+
+let confirmModalResolver = null;
+let confirmModalKeyHandler = null;
 
 function showResult(type, html) {
-  if (resultHideTimer) {
-    clearTimeout(resultHideTimer);
-    resultHideTimer = null;
-  }
   resultEl.className = `result result-${type}`;
-  resultEl.innerHTML = html;
+  const closeButtonHtml =
+    type === 'pending'
+      ? ''
+      : '<button type="button" class="result-close" aria-label="Close notice">Close</button>';
+  resultEl.innerHTML = `
+    <div class="result-content">${html}</div>
+    ${closeButtonHtml}
+  `;
   resultEl.classList.remove('hidden');
-
-  if (type === 'success') {
-    resultHideTimer = setTimeout(() => {
-      hideResult();
-    }, 3000);
-  }
+  resultEl.querySelector('.result-close')?.addEventListener('click', hideResult);
 }
 
 function hideResult() {
-  if (resultHideTimer) {
-    clearTimeout(resultHideTimer);
-    resultHideTimer = null;
-  }
   resultEl.classList.add('hidden');
+}
+
+function closeConfirmModal(confirmed) {
+  if (confirmModalKeyHandler) {
+    window.removeEventListener('keydown', confirmModalKeyHandler);
+    confirmModalKeyHandler = null;
+  }
+
+  confirmModalEl.classList.add('hidden');
+  confirmModalEl.setAttribute('aria-hidden', 'true');
+
+  const resolver = confirmModalResolver;
+  confirmModalResolver = null;
+  if (resolver) resolver(Boolean(confirmed));
+}
+
+function showConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Continue',
+  cancelLabel = 'Cancel',
+}) {
+  if (confirmModalResolver) {
+    closeConfirmModal(false);
+  }
+
+  confirmModalTitleEl.textContent = title;
+  confirmModalMessageEl.textContent = message;
+  confirmModalConfirmBtn.textContent = confirmLabel;
+  confirmModalCancelBtn.textContent = cancelLabel;
+  confirmModalEl.classList.remove('hidden');
+  confirmModalEl.setAttribute('aria-hidden', 'false');
+
+  return new Promise((resolve) => {
+    confirmModalResolver = resolve;
+    confirmModalKeyHandler = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeConfirmModal(false);
+      }
+    };
+    window.addEventListener('keydown', confirmModalKeyHandler);
+    confirmModalConfirmBtn.focus();
+  });
 }
 
 function setStatus(text, type) {
@@ -285,6 +336,7 @@ function navigateToGroups() {
   activeGroupAvatar = null;
   activeGroupMeta = null;
   activeOwnerSafe = null;
+  activeMemberCount = null;
   resetOwnerSafeState();
   showGroupManagementMenu();
   clearMemberSearchResults();
@@ -302,10 +354,13 @@ function showDisconnectedState() {
   resetMembersState();
   resetOwnerSafeState();
   ownerSafeInput.value = '';
-  overviewCollateralTotalEl.textContent = '';
-  overviewCollateralListEl.innerHTML = '<p class="muted">Open a group to load treasury balances.</p>';
-  overviewHoldersListEl.innerHTML = '<p class="muted">Open a group to load token holders.</p>';
   overviewGroupTypeEl.textContent = '—';
+  feeCollectionBalanceDisplay.textContent = '—';
+  convertibleFeesDisplay.textContent = '—';
+  if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = '—';
+  collectFeesBtn.disabled = true;
+  cachedFeeSourceTokens = [];
+  cachedFeeAddressGroupTokenAmount = 0n;
   overviewTotalSupplyEl.textContent = '—';
   updateTokenUiCopy();
   clearSendSearchResults();
@@ -456,6 +511,15 @@ function getActiveTokenSymbol() {
   return symbol || 'token';
 }
 
+function getActiveGroupLabel() {
+  const name = String(activeGroupMeta?.name || activeGroupMeta?.symbol || '').trim();
+  if (name) return name;
+  if (activeGroupMeta?.group && isAddress(activeGroupMeta.group)) {
+    return shortenAddress(activeGroupMeta.group);
+  }
+  return 'this group';
+}
+
 function formatActiveTokenAmount(amount) {
   return `${attoToCirclesString(amount)} ${getActiveTokenSymbol()}`;
 }
@@ -465,39 +529,30 @@ function updateTokenUiCopy() {
   const isGeneric = symbol === 'token';
 
   if (groupTokenCardTitleEl) {
-    groupTokenCardTitleEl.textContent = isGeneric ? 'Manage Token' : `Manage ${symbol}`;
+    groupTokenCardTitleEl.textContent = 'Treasury Operations';
   }
   if (groupTokenCardCopyEl) {
     groupTokenCardCopyEl.textContent = isGeneric
-      ? "Review collateral and manage minting and sending."
-      : `Review collateral, then mint and send ${symbol}.`;
-  }
-  if (overviewHoldersLabelEl) {
-    overviewHoldersLabelEl.textContent = isGeneric ? 'Token holders' : `${symbol} holders`;
+      ? 'Convert fee balances and send the group token.'
+      : `Convert fee balances, then send ${symbol}.`;
   }
   if (groupTokenPanelTitleEl) {
-    groupTokenPanelTitleEl.textContent = isGeneric ? 'Manage Token' : `Manage ${symbol}`;
-  }
-  if (groupTokenMintTitleEl) {
-    groupTokenMintTitleEl.textContent = isGeneric ? 'Mint Token' : `Mint ${symbol}`;
+    groupTokenPanelTitleEl.textContent = 'Treasury Operations';
   }
   if (groupTokenSendTitleEl) {
     groupTokenSendTitleEl.textContent = isGeneric ? 'Send Token' : `Send ${symbol}`;
   }
-  if (mintAmountLabelEl) {
-    mintAmountLabelEl.textContent = isGeneric ? 'Mint amount' : `Mint amount (${symbol})`;
-  }
   if (sendAmountLabelEl) {
     sendAmountLabelEl.textContent = isGeneric ? 'Amount' : `Amount (${symbol})`;
   }
-  if (mintGroupBtn) {
-    mintGroupBtn.textContent = isGeneric ? 'Mint Token' : `Mint ${symbol}`;
+  if (collectFeesAmountLabelEl) {
+    collectFeesAmountLabelEl.textContent = isGeneric ? 'Amount to convert' : `Amount to convert (${symbol})`;
+  }
+  if (convertibleLabelEl) {
+    convertibleLabelEl.textContent = isGeneric ? 'Convertible to Group CRC' : `Convertible to ${symbol}`;
   }
   if (sendGroupBtn) {
     sendGroupBtn.textContent = isGeneric ? 'Send Token' : `Send ${symbol}`;
-  }
-  if (!activeGroupMeta && mintableDisplay) {
-    mintableDisplay.textContent = 'Max: 0 tokens';
   }
   if (overviewTotalSupplyLabelEl) {
     overviewTotalSupplyLabelEl.textContent = isGeneric ? 'Total Supply' : `${symbol} Total Supply`;
@@ -629,10 +684,11 @@ function addSessionOwnerSafe(ownerAddress, safeAddress) {
   setSessionOwnerSafes(ownerAddress, current);
 }
 
-function getCollateralAmount(balance) {
+
+function getFeeBalanceAmount(balance) {
   if (!balance) return 0n;
-  if (balance.attoCrc !== undefined && balance.attoCrc !== null) return BigInt(balance.attoCrc);
   if (balance.attoCircles !== undefined && balance.attoCircles !== null) return BigInt(balance.attoCircles);
+  if (balance.attoCrc !== undefined && balance.attoCrc !== null) return BigInt(balance.attoCrc);
   if (balance.balance !== undefined && balance.balance !== null) return BigInt(balance.balance);
   return 0n;
 }
@@ -1242,7 +1298,7 @@ async function getVerifiedOwnerSafes(safeAddresses, ownerAddress) {
           verifiedSafes.push(safeAddress);
         }
       });
-    } catch {}
+    } catch { }
   }
 
   return verifiedSafes;
@@ -1267,6 +1323,34 @@ function getResolvedGroupMeta(groupAddress) {
 
 function getNameOrAddress(item) {
   return item?.name || item?.group || 'Unknown';
+}
+
+function normalizeMemberCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? count : null;
+}
+
+function setActiveMemberCount(count) {
+  activeMemberCount = normalizeMemberCount(count);
+  if (activeGroupMeta && activeMemberCount !== null) {
+    activeGroupMeta.memberCount = activeMemberCount;
+  }
+
+  groupMemberCountDisplay.textContent = activeMemberCount === null ? '—' : String(activeMemberCount);
+}
+
+function setAffiliateCountDisplay(count) {
+  if (count === 'loading') {
+    groupAffiliateCountDisplay.textContent = '…';
+    return;
+  }
+
+  const normalized = normalizeMemberCount(count);
+  groupAffiliateCountDisplay.textContent = normalized === null ? '—' : String(normalized);
+}
+
+function setGroupTreasuryBalanceDisplay(value) {
+  groupFeeBalanceDisplay.textContent = String(value || '—');
 }
 
 function normalizeGroups(groups) {
@@ -1294,47 +1378,6 @@ async function fetchGroupsByOwners(ownerIn) {
     ownerIn: normalizeAddressList(ownerIn),
   });
   return normalizeGroups(groups);
-}
-
-function getProxyAddressFromReceipt(receipt) {
-  for (const log of receipt?.logs || []) {
-    try {
-      const decoded = decodeEventLog({
-        abi: [PROXY_CREATION_EVENT],
-        data: log.data,
-        topics: log.topics,
-        strict: false,
-      });
-      if (decoded?.eventName === 'ProxyCreation' && decoded.args?.proxy) {
-        return getAddress(decoded.args.proxy);
-      }
-    } catch {}
-  }
-
-  return null;
-}
-
-function getBaseGroupAddressFromReceipt(receipt) {
-  for (const log of receipt?.logs || []) {
-    try {
-      const decoded = decodeEventLog({
-        abi: [BASE_GROUP_CREATED_EVENT],
-        data: log.data,
-        topics: log.topics,
-        strict: false,
-      });
-      if (decoded?.eventName === 'BaseGroupCreated' && decoded.args?.group) {
-        return getAddress(decoded.args.group);
-      }
-    } catch {}
-  }
-
-  return null;
-}
-
-function formatDateTime(timestampSeconds) {
-  if (!timestampSeconds) return 'No expiry';
-  return new Date(timestampSeconds * 1000).toLocaleString();
 }
 
 async function loadAllPages(query, maxPages = 6) {
@@ -1493,10 +1536,6 @@ function renderGroupsList() {
     })
     .join('');
 
-  groupsListEl.querySelectorAll('.open-group-btn').forEach((button) => {
-    button.addEventListener('click', () => openGroup(button.dataset.group));
-  });
-
   void hydrateGroupListImages();
 }
 
@@ -1654,13 +1693,44 @@ async function createGroup() {
     lastTxHashes = await sendTransactions(batchedTransactions);
     const receipts = await waitForReceipts(lastTxHashes);
 
-    const ownerSafeReceipt = receipts[0] || null;
-    const groupSafeReceipt = receipts[1] || null;
-    const baseGroupReceipt = receipts[2] || null;
+    let resolvedOwnerSafe = predictedOwnerSafe;
+    let resolvedGroupSafe = predictedGroupSafe;
+    let resolvedGroupAddress = null;
 
-    const resolvedOwnerSafe = getProxyAddressFromReceipt(ownerSafeReceipt) || predictedOwnerSafe;
-    const resolvedGroupSafe = getProxyAddressFromReceipt(groupSafeReceipt) || predictedGroupSafe;
-    const resolvedGroupAddress = getBaseGroupAddressFromReceipt(baseGroupReceipt);
+    for (const receipt of receipts) {
+      if (!receipt) continue;
+      for (const log of receipt.logs || []) {
+        try {
+          const proxyDecoded = decodeEventLog({
+            abi: [PROXY_CREATION_EVENT],
+            data: log.data,
+            topics: log.topics,
+            strict: false,
+          });
+          if (proxyDecoded?.eventName === 'ProxyCreation' && proxyDecoded.args?.proxy) {
+            const addr = getAddress(proxyDecoded.args.proxy);
+            if (resolvedOwnerSafe === predictedOwnerSafe) {
+              resolvedOwnerSafe = addr;
+            } else if (resolvedGroupSafe === predictedGroupSafe) {
+              resolvedGroupSafe = addr;
+            }
+          }
+        } catch { }
+        if (!resolvedGroupAddress) {
+          try {
+            const groupDecoded = decodeEventLog({
+              abi: [BASE_GROUP_CREATED_EVENT],
+              data: log.data,
+              topics: log.topics,
+              strict: false,
+            });
+            if (groupDecoded?.eventName === 'BaseGroupCreated' && groupDecoded.args?.group) {
+              resolvedGroupAddress = getAddress(groupDecoded.args.group);
+            }
+          } catch { }
+        }
+      }
+    }
 
     if (!resolvedGroupAddress) {
       throw new Error('Group creation was submitted but no BaseGroupCreated event was found.');
@@ -1717,13 +1787,50 @@ async function populateProfileEditor() {
   syncExternalLinkInputs('profile');
 }
 
+async function loadAffiliateCount(groupAddress) {
+  setAffiliateCountDisplay('loading');
+  try {
+    const res = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'circles_query',
+        params: [{
+          Namespace: 'V_CrcV2',
+          Table: 'AffiliateMembersCount_1h',
+          Columns: ['value'],
+          Filter: [{
+            Type: 'FilterPredicate',
+            FilterType: 'Equals',
+            Column: 'group',
+            Value: groupAddress.toLowerCase(),
+          }],
+          Order: [{ Column: 'timestamp', SortOrder: 'DESC' }],
+          Limit: 1,
+        }],
+      }),
+    });
+    const json = await res.json();
+    const count = Number(json?.result?.rows?.[0]?.[0] || 0);
+    setAffiliateCountDisplay(count);
+  } catch {
+    setAffiliateCountDisplay(null);
+  }
+}
+
 function getMembersTotalCount() {
-  const count = Number(activeGroupMeta?.memberCount);
-  return Number.isFinite(count) && count >= 0 ? count : cachedMembers.length;
+  if (!membersHasMorePages && memberPages.length > 0) {
+    return cachedMembers.length;
+  }
+
+  return activeMemberCount ?? cachedMembers.length;
 }
 
 function updateMembersToolbar() {
   const totalCount = getMembersTotalCount();
+  setActiveMemberCount(totalCount);
   membersTotalCountEl.textContent = `${totalCount} member${totalCount === 1 ? '' : 's'}`;
   membersPageLabelEl.textContent = `Page ${currentMembersPageIndex + 1}`;
   membersPrevBtn.disabled = currentMembersPageIndex === 0;
@@ -1834,6 +1941,10 @@ async function loadMembers() {
     await goToMembersPage(0);
     if (requestId !== membersLoadRequestId || activeGroupMeta?.group !== groupAddress) return;
     loadedMembersGroupAddress = groupAddress;
+    if (!membersHasMorePages) {
+      setActiveMemberCount(cachedMembers.length);
+      updateMembersToolbar();
+    }
   } catch (err) {
     if (requestId !== membersLoadRequestId || activeGroupMeta?.group !== groupAddress) return;
     membersListEl.innerHTML = `<p class="muted">Could not load members: ${escapeHtml(decodeError(err))}</p>`;
@@ -2113,6 +2224,8 @@ async function addMember(preselectedAddress = null) {
     showResult('success', `Member added: ${memberAddress}.${links}`);
     memberQueryInput.value = '';
     clearMemberSearchResults();
+    setActiveMemberCount(getMembersTotalCount() + 1);
+    updateMembersToolbar();
     await loadMembers();
   } catch (err) {
     showResult('error', `Could not add member: ${decodeError(err)}`);
@@ -2134,6 +2247,8 @@ async function removeMember(rawAddress) {
     await activeGroupAvatar.trust.remove(getAddress(rawAddress));
     const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
     showResult('success', `Member removed: ${rawAddress}.${links}`);
+    setActiveMemberCount(Math.max(0, getMembersTotalCount() - 1));
+    updateMembersToolbar();
     await loadMembers();
   } catch (err) {
     showResult('error', `Could not remove member: ${decodeError(err)}`);
@@ -2143,86 +2258,100 @@ async function removeMember(rawAddress) {
 async function loadTreasuryPanels() {
   if (!humanSdk || !activeGroupMeta || !activeGroupAvatar) return;
 
-  overviewCollateralListEl.innerHTML = '<p class="muted">Loading treasury balances…</p>';
-  overviewHoldersListEl.innerHTML = `<p class="muted">Loading ${escapeHtml(getActiveTokenSymbol())} holders…</p>`;
   overviewGroupTypeEl.textContent = 'Loading…';
   overviewTotalSupplyEl.textContent = 'Loading…';
-  mintableDisplay.textContent = 'Max: loading…';
+  feeCollectionBalanceDisplay.textContent = 'Loading…';
+  setGroupTreasuryBalanceDisplay('…');
+  convertibleFeesDisplay.textContent = 'Loading…';
+  if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = 'Loading…';
+  collectFeesBtn.disabled = true;
 
-  const [totalSupplyResult, collateralResult, holdersResult, mintableResult] = await Promise.allSettled([
+  const feeCollectionAddress = activeGroupMeta.feeCollection;
+  const hasFeeCollection = feeCollectionAddress && isAddress(feeCollectionAddress) && feeCollectionAddress !== zeroAddress;
+
+  const [totalSupplyResult, feeBalanceResult] = await Promise.allSettled([
     activeGroupAvatar.balances.getTotalSupply(),
-    humanSdk.groups.getCollateral(activeGroupMeta.group),
-    loadAllPages(humanSdk.groups.getHolders(activeGroupMeta.group, GROUP_PAGE_LIMIT), 2),
-    activeGroupMeta.mintHandler
-      ? activeGroupAvatar.transfer.getMaxAmount(activeGroupMeta.mintHandler)
-      : Promise.resolve(0n),
+    hasFeeCollection
+      ? humanSdk.groups.getFeeCollectionBalances(feeCollectionAddress)
+      : Promise.resolve([]),
   ]);
 
   overviewGroupTypeEl.textContent = getFallbackGroupType(activeGroupMeta.type);
 
+  let totalSupplyAtto = 0n;
   if (totalSupplyResult.status === 'fulfilled') {
-    overviewTotalSupplyEl.textContent = formatActiveTokenAmount(BigInt(totalSupplyResult.value || 0n));
+    totalSupplyAtto = BigInt(totalSupplyResult.value || 0n);
+    overviewTotalSupplyEl.textContent = formatActiveTokenAmount(totalSupplyAtto);
   } else {
     overviewTotalSupplyEl.textContent = 'Unavailable';
   }
 
-  if (mintableResult.status === 'fulfilled') {
-    cachedMintableAmount = BigInt(mintableResult.value || 0);
-    mintableDisplay.textContent = `Max: ${formatActiveTokenAmount(cachedMintableAmount)}`;
-  } else {
-    cachedMintableAmount = 0n;
-    mintableDisplay.textContent = 'Max: unavailable';
-  }
 
-  if (collateralResult.status === 'fulfilled') {
-    const collateral = collateralResult.value || [];
-    if (!collateral.length) {
-      overviewCollateralTotalEl.textContent = '';
-      overviewCollateralListEl.innerHTML = '<p class="muted">No treasury collateral found.</p>';
+  // Convertible fee amount (max flow from fee collection to mint handler)
+  cachedFeeSourceTokens = [];
+  cachedFeeAddressGroupTokenAmount = 0n;
+  if (!hasFeeCollection || !activeGroupMeta.mintHandler) {
+    cachedFeeConvertibleAmount = 0n;
+    convertibleFeesDisplay.textContent = formatActiveTokenAmount(0n);
+    if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = formatActiveTokenAmount(0n);
+  } else {
+    const feeSourceTokens =
+      feeBalanceResult.status === 'fulfilled'
+        ? normalizeAddressList((feeBalanceResult.value || []).map((balance) => balance?.tokenAddress))
+        : [];
+    cachedFeeSourceTokens = feeSourceTokens;
+
+    if (!feeSourceTokens.length) {
+      cachedFeeConvertibleAmount = 0n;
+      convertibleFeesDisplay.textContent = formatActiveTokenAmount(0n);
+      if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = formatActiveTokenAmount(0n);
     } else {
-      const totalAtto = collateral.reduce((sum, b) => sum + getCollateralAmount(b), 0n);
-      overviewCollateralTotalEl.textContent = `${attoToCirclesString(totalAtto)} CRC across ${collateral.length} token${collateral.length === 1 ? '' : 's'}`;
-      overviewCollateralListEl.innerHTML = collateral
-        .map(
-          (balance) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <div class="list-row-title">${escapeHtml(balance.tokenAddress)}</div>
-                <div class="list-row-meta mono">${escapeHtml(balance.tokenOwner || activeGroupMeta.treasury || '')}</div>
-              </div>
-              <span class="chip">${escapeHtml(attoToCirclesString(getCollateralAmount(balance)))} CRC</span>
-            </div>
-          `
-        )
-        .join('');
+      try {
+        cachedFeeConvertibleAmount = BigInt(
+          await humanSdk.groups.getConvertibleFeeAmount(feeCollectionAddress, activeGroupMeta.mintHandler, {
+            fromTokens: feeSourceTokens,
+            useWrappedBalances: true,
+          })
+        );
+        convertibleFeesDisplay.textContent = formatActiveTokenAmount(cachedFeeConvertibleAmount);
+      } catch {
+        cachedFeeConvertibleAmount = 0n;
+        convertibleFeesDisplay.textContent = formatActiveTokenAmount(0n);
+      }
+    }
+  }
+  collectFeesBtn.disabled = cachedFeeConvertibleAmount <= 0n;
+
+  // Fee collection address balance
+  if (!hasFeeCollection) {
+    feeCollectionBalanceDisplay.textContent = 'No fee collection address set';
+    setGroupTreasuryBalanceDisplay('N/A');
+    if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = formatActiveTokenAmount(0n);
+  } else if (feeBalanceResult.status === 'fulfilled') {
+    const feeBalances = feeBalanceResult.value || [];
+    if (!feeBalances.length) {
+      feeCollectionBalanceDisplay.textContent = '0 CRC';
+      setGroupTreasuryBalanceDisplay('0 CRC');
+      if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = formatActiveTokenAmount(0n);
+    } else {
+      const feeTotal = feeBalances.reduce((sum, b) => sum + getFeeBalanceAmount(b), 0n);
+      const formattedFeeTotal = `${Number(formatEther(feeTotal)).toFixed(2)} CRC`;
+      feeCollectionBalanceDisplay.textContent = `${formattedFeeTotal} across ${feeBalances.length} token${feeBalances.length === 1 ? '' : 's'}`;
+      setGroupTreasuryBalanceDisplay(formattedFeeTotal);
+      const feeAddressGroupToken = feeBalances.find(
+        (balance) => String(balance?.tokenAddress || '').toLowerCase() === activeGroupMeta.group.toLowerCase()
+      );
+      cachedFeeAddressGroupTokenAmount = feeAddressGroupToken ? getFeeBalanceAmount(feeAddressGroupToken) : 0n;
+      if (feeAddressGroupTokenDisplay) {
+        feeAddressGroupTokenDisplay.textContent = formatActiveTokenAmount(cachedFeeAddressGroupTokenAmount);
+      }
     }
   } else {
-    overviewCollateralTotalEl.textContent = '';
-    overviewCollateralListEl.innerHTML = `<p class="muted">Could not load treasury data: ${escapeHtml(decodeError(collateralResult.reason))}</p>`;
+    feeCollectionBalanceDisplay.textContent = 'Could not load';
+    setGroupTreasuryBalanceDisplay('—');
+    if (feeAddressGroupTokenDisplay) feeAddressGroupTokenDisplay.textContent = 'Could not load';
   }
 
-  if (holdersResult.status === 'fulfilled') {
-    const holders = holdersResult.value || [];
-    if (!holders.length) {
-      overviewHoldersListEl.innerHTML = `<p class="muted">No ${escapeHtml(getActiveTokenSymbol())} holders found.</p>`;
-    } else {
-      overviewHoldersListEl.innerHTML = holders
-        .map(
-          (holder) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <div class="list-row-title mono">${escapeHtml(holder.holder)}</div>
-                <div class="list-row-meta">${Number(holder.fractionOwnership * 100).toFixed(2)}% ownership</div>
-              </div>
-              <span class="chip">${escapeHtml(formatActiveTokenAmount(holder.demurragedTotalBalance))}</span>
-            </div>
-          `
-        )
-        .join('');
-    }
-  } else {
-    overviewHoldersListEl.innerHTML = `<p class="muted">Could not load token holders: ${escapeHtml(decodeError(holdersResult.reason))}</p>`;
-  }
 }
 
 async function saveProfile() {
@@ -2275,6 +2404,7 @@ async function updateGroupAddressSetting({
   successMessage,
   failureMessage,
   setter,
+  confirmModal,
 }) {
   if (!activeGroupAvatar || !activeGroupMeta) {
     showResult('error', 'Open a group first.');
@@ -2292,6 +2422,13 @@ async function updateGroupAddressSetting({
   if (currentValue && nextAddress.toLowerCase() === currentValue.toLowerCase()) {
     showResult('error', unchangedError);
     return;
+  }
+
+  if (confirmModal) {
+    const modalConfig =
+      typeof confirmModal === 'function' ? confirmModal(nextAddress) : confirmModal;
+    const confirmed = await showConfirmModal(modalConfig);
+    if (!confirmed) return;
   }
 
   buttonEl.disabled = true;
@@ -2330,6 +2467,17 @@ async function updateGroupOwner() {
     return;
   }
 
+  const confirmed = await showConfirmModal({
+    title: 'Transfer Group Ownership?',
+    message:
+      `You are updating the owner Safe for ${getActiveGroupLabel()} to ${nextOwner}. ` +
+      'The new Safe will control owner-level Circles group actions such as service and fee collection updates.',
+    confirmLabel: 'Transfer Owner',
+  });
+  if (!confirmed) {
+    return;
+  }
+
   updateOwnerBtn.disabled = true;
   showResult('pending', 'Updating owner Safe…');
 
@@ -2358,10 +2506,34 @@ async function updateGroupService() {
     successMessage: (nextAddress) => `Service updated to ${nextAddress}.`,
     failureMessage: 'Could not update service address: ',
     setter: (nextAddress) => activeGroupAvatar.setProperties.service(nextAddress),
+    confirmModal: (nextAddress) => ({
+      title: 'Update Group Service?',
+      message:
+        `You are updating the Circles service address for ${getActiveGroupLabel()} to ${nextAddress}. ` +
+        'This changes which service contract the group points to.',
+      confirmLabel: 'Update Service',
+    }),
   });
 }
 
 async function updateGroupFeeCollection() {
+  const rawInput = String(feeCollectionInput?.value || '').trim();
+
+  try {
+    const candidate = getAddress(rawInput);
+    if (connectedAddress && candidate.toLowerCase() === connectedAddress.toLowerCase()) {
+      const confirmed = await showConfirmModal({
+        title: 'Use Connected Wallet?',
+        message:
+          'You are setting the fee collection address to the same wallet address currently connected in Circles. This is usually not recommended because fees may end up in a personal wallet.',
+        confirmLabel: 'Use This Address',
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+  } catch { }
+
   return updateGroupAddressSetting({
     inputEl: feeCollectionInput,
     buttonEl: updateFeeCollectionBtn,
@@ -2467,6 +2639,17 @@ async function addOwnerToOwnerSafe(rawOwner = addOwnerInput.value) {
     return;
   }
 
+  const confirmed = await showConfirmModal({
+    title: 'Add Safe Owner?',
+    message:
+      `You are adding ${nextOwner} as an owner of the owner Safe for ${getActiveGroupLabel()}. ` +
+      'On this threshold-1 Safe, each owner can approve admin actions for the Circles group.',
+    confirmLabel: 'Add Safe Owner',
+  });
+  if (!confirmed) {
+    return;
+  }
+
   addOwnerSafeBtn.disabled = true;
   showResult('pending', 'Adding owner to the owner Safe…');
 
@@ -2499,46 +2682,14 @@ async function addOwnerToOwnerSafe(rawOwner = addOwnerInput.value) {
   }
 }
 
-async function mintGroupCrc() {
-  if (!activeGroupAvatar || !activeGroupMeta?.mintHandler) {
-    showResult('error', 'This group is missing a mint handler.');
-    return;
-  }
-
-  const amount = parseCirclesInputToAtto(mintAmountInput.value);
-  if (amount === null || amount <= 0n) {
-    showResult('error', `Enter a valid ${getActiveTokenSymbol()} amount.`);
-    return;
-  }
-
-  if (cachedMintableAmount > 0n && amount > cachedMintableAmount) {
-    showResult(
-      'error',
-      `Amount exceeds the currently transferable collateral (${formatActiveTokenAmount(cachedMintableAmount)}).`
-    );
-    return;
-  }
-
-  mintGroupBtn.disabled = true;
-  showResult('pending', 'Routing collateral to the mint handler…');
-
-  try {
-    lastTxHashes = [];
-    await activeGroupAvatar.transfer.advanced(activeGroupMeta.mintHandler, amount);
-    const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
-    showResult('success', `Mint flow submitted for ${formatActiveTokenAmount(amount)}.${links}`);
-    mintAmountInput.value = '';
-    await loadTreasuryPanels();
-  } catch (err) {
-    showResult('error', `Could not mint ${getActiveTokenSymbol()}: ${decodeError(err)}`);
-  } finally {
-    mintGroupBtn.disabled = false;
-  }
-}
-
 async function sendGroupCrc() {
-  if (!activeGroupAvatar || !activeGroupMeta) {
+  if (!activeGroupAvatar || !activeGroupMeta || !activeGroupSdk) {
     showResult('error', 'Open a group first.');
+    return;
+  }
+
+  if (!activeGroupMeta.feeCollection || !isAddress(activeGroupMeta.feeCollection)) {
+    showResult('error', 'This group has no valid fee collection address.');
     return;
   }
 
@@ -2550,10 +2701,11 @@ async function sendGroupCrc() {
     return;
   }
 
+  const feeCollectionAvatar = await activeGroupSdk.getAvatar(activeGroupMeta.feeCollection);
   const transferOptions = getGroupSendTransferOptions();
   let maxTransferableAmount = 0n;
   try {
-    maxTransferableAmount = await activeGroupAvatar.transfer.getMaxAmountAdvanced(
+    maxTransferableAmount = await feeCollectionAvatar.transfer.getMaxAmountAdvanced(
       recipient,
       transferOptions
     );
@@ -2583,7 +2735,7 @@ async function sendGroupCrc() {
 
   try {
     lastTxHashes = [];
-    await activeGroupAvatar.transfer.advanced(recipient, amount, transferOptions);
+    await feeCollectionAvatar.transfer.advanced(recipient, amount, transferOptions);
     const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
     showResult(
       'success',
@@ -2597,6 +2749,39 @@ async function sendGroupCrc() {
     showResult('error', `Could not send ${getActiveTokenSymbol()}: ${decodeError(err)}`);
   } finally {
     sendGroupBtn.disabled = false;
+  }
+}
+
+async function fillSendMax() {
+  if (!activeGroupMeta || !activeGroupSdk) return;
+
+  if (!sendRecipientInput.value.trim()) {
+    sendAmountInput.value = attoToCirclesString(cachedFeeAddressGroupTokenAmount);
+    return;
+  }
+
+  if (!activeGroupMeta.feeCollection || !isAddress(activeGroupMeta.feeCollection)) {
+    showResult('error', 'This group has no valid fee collection address.');
+    return;
+  }
+
+  let recipient;
+  try {
+    recipient = await resolveAddress(sendRecipientInput.value);
+  } catch (err) {
+    showResult('error', decodeError(err));
+    return;
+  }
+
+  try {
+    const feeCollectionAvatar = await activeGroupSdk.getAvatar(activeGroupMeta.feeCollection);
+    const maxTransferableAmount = await feeCollectionAvatar.transfer.getMaxAmountAdvanced(
+      recipient,
+      getGroupSendTransferOptions()
+    );
+    sendAmountInput.value = attoToCirclesString(maxTransferableAmount);
+  } catch (err) {
+    showResult('error', `Could not calculate max transferable ${getActiveTokenSymbol()}: ${decodeError(err)}`);
   }
 }
 
@@ -2634,6 +2819,7 @@ async function openGroup(groupAddress, preserveResult = false) {
 
     groupSymbolDisplay.textContent = activeGroupMeta.symbol || 'GROUP';
     groupNameDisplay.textContent = activeGroupMeta.name || activeGroupMeta.group;
+    setActiveMemberCount(activeGroupMeta.memberCount);
     updateTokenUiCopy();
     groupAddressDisplay.textContent = shortenAddress(activeGroupMeta.group);
     groupAddressDisplay.title = activeGroupMeta.group;
@@ -2650,22 +2836,81 @@ async function openGroup(groupAddress, preserveResult = false) {
     resetMembersState();
     resetOwnerSafeState();
     resetMembershipConditionsState();
-    mintAmountInput.value = '';
     sendRecipientInput.value = '';
     sendAmountInput.value = '';
+    collectFeesAmountInput.value = '';
     clearSendSearchResults();
 
     showGroupView();
-    await Promise.all([populateProfileEditor(), loadTreasuryPanels(), loadMembershipConditions()]);
+    await Promise.all([populateProfileEditor(), loadTreasuryPanels(), loadMembershipConditions(), loadAffiliateCount(activeGroupMeta.group)]);
     if (!preserveResult) hideResult();
   } catch (err) {
     showResult('error', `Could not open group: ${decodeError(err)}`);
   }
 }
 
-function fillMintMax() {
-  if (cachedMintableAmount <= 0n) return;
-  mintAmountInput.value = attoToCirclesString(cachedMintableAmount);
+async function collectFees() {
+  if (!activeGroupAvatar || !activeGroupMeta) {
+    showResult('error', 'Open a group first.');
+    return;
+  }
+
+  if (!activeGroupMeta.mintHandler) {
+    showResult('error', 'This group has no mint handler configured.');
+    return;
+  }
+
+  const amount = parseCirclesInputToAtto(collectFeesAmountInput.value);
+  if (amount === null || amount <= 0n) {
+    showResult('error', 'Enter a valid amount to convert.');
+    return;
+  }
+
+  if (cachedFeeConvertibleAmount <= 0n) {
+    showResult('error', 'No convertible fee balance is available.');
+    return;
+  }
+
+  if (amount > cachedFeeConvertibleAmount) {
+    showResult(
+      'error',
+      `Amount exceeds the currently convertible balance (${formatActiveTokenAmount(cachedFeeConvertibleAmount)}).`
+    );
+    return;
+  }
+
+  if (!cachedFeeSourceTokens.length) {
+    showResult('error', 'No received fee tokens are available to convert.');
+    return;
+  }
+
+  collectFeesBtn.disabled = true;
+  const symbol = getActiveTokenSymbol();
+  showResult('pending', `Converting ${attoToCirclesString(amount)} ${symbol} from fee collection into group CRC…`);
+
+  try {
+    lastTxHashes = [];
+    const feeCollectionAvatar = await activeGroupSdk.getAvatar(activeGroupMeta.feeCollection);
+    await feeCollectionAvatar.transfer.advanced(activeGroupMeta.mintHandler, amount, {
+      fromTokens: cachedFeeSourceTokens,
+      useWrappedBalances: true,
+    });
+    const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
+    showResult(
+      'success',
+      `Converted ${attoToCirclesString(amount)} ${symbol} from fee collection into group CRC.${links}`
+    );
+    collectFeesAmountInput.value = '';
+    await loadTreasuryPanels();
+  } catch (err) {
+    showResult('error', `Could not convert fees: ${decodeError(err)}`);
+  } finally {
+    collectFeesBtn.disabled = false;
+  }
+}
+
+function fillFeesMax() {
+  collectFeesAmountInput.value = attoToCirclesString(cachedFeeConvertibleAmount);
 }
 
 onWalletChange(async (address) => {
@@ -2687,7 +2932,9 @@ onWalletChange(async (address) => {
   membersQuery = null;
   currentMembersPageIndex = 0;
   membersHasMorePages = false;
-  cachedMintableAmount = 0n;
+  cachedFeeConvertibleAmount = 0n;
+  cachedFeeSourceTokens = [];
+  cachedFeeAddressGroupTokenAmount = 0n;
   lastTxHashes = [];
   resetOwnerSafeState();
   resetMembershipConditionsState();
@@ -2743,6 +2990,11 @@ startCreateGroupBtn.addEventListener('click', () => {
   hideResult();
   showCreateView();
 });
+groupsListEl.addEventListener('click', (event) => {
+  const button = event.target.closest('.open-group-btn');
+  if (!button || !groupsListEl.contains(button)) return;
+  void openGroup(button.dataset.group);
+});
 createGroupBtn.addEventListener('click', createGroup);
 createGroupNameInput.addEventListener('input', updateCreateButtonState);
 createGroupSymbolInput.addEventListener('input', () => {
@@ -2762,6 +3014,7 @@ createLinkUrlInput?.addEventListener('input', (event) => {
   handleExternalLinkInput('create', 'url', event.target.value);
 });
 
+editGroupBtn.addEventListener('click', () => showGroupManagementPanel('details'));
 refreshGroupBtn.addEventListener('click', async () => {
   if (!activeGroupMeta) return;
   await openGroup(activeGroupMeta.group, true);
@@ -2785,6 +3038,7 @@ profileLinkUrlInput?.addEventListener('input', (event) => {
 updateOwnerBtn.addEventListener('click', updateGroupOwner);
 updateServiceBtn.addEventListener('click', updateGroupService);
 updateFeeCollectionBtn.addEventListener('click', updateGroupFeeCollection);
+collectFeesBtn.addEventListener('click', collectFees);
 enableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(true));
 disableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(false));
 addOwnerInput.addEventListener('input', updateOwnerSafeSearchResults);
@@ -2801,10 +3055,20 @@ membersNextBtn.addEventListener('click', () => {
   goToMembersPage(currentMembersPageIndex + 1);
 });
 
-mintMaxBtn.addEventListener('click', fillMintMax);
 sendRecipientInput.addEventListener('input', updateSendSearchResults);
-mintGroupBtn.addEventListener('click', mintGroupCrc);
+sendMaxBtn.addEventListener('click', () => {
+  void fillSendMax();
+});
+collectFeesMaxBtn.addEventListener('click', fillFeesMax);
 sendGroupBtn.addEventListener('click', sendGroupCrc);
+
+confirmModalCancelBtn.addEventListener('click', () => closeConfirmModal(false));
+confirmModalConfirmBtn.addEventListener('click', () => closeConfirmModal(true));
+confirmModalEl.addEventListener('click', (event) => {
+  if (event.target === confirmModalEl) {
+    closeConfirmModal(false);
+  }
+});
 
 syncExternalLinkInputs('create');
 syncExternalLinkInputs('profile');

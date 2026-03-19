@@ -155,10 +155,27 @@ export class CirclesClient {
     getHolders: (groupAddress, limit = 100) => {
       return this.rpc.group.getGroupHolders(groupAddress, limit);
     },
+    getFeeCollectionBalances: async (feeCollectionAddress) => {
+      return this.rpc.balance.getTokenBalances(feeCollectionAddress);
+    },
+    getFeeCollectionTotalBalance: async (feeCollectionAddress) => {
+      return this.rpc.balance.getTotalBalance(feeCollectionAddress);
+    },
+    getConvertibleFeeAmount: async (feeCollectionAddress, mintHandlerAddress, options = {}) => {
+      return this.rpc.pathfinder.findMaxFlow({
+        from: feeCollectionAddress.toLowerCase(),
+        to: mintHandlerAddress.toLowerCase(),
+        ...options,
+      });
+    },
   };
 
-  async getBaseGroupAvatar(address) {
+  async getAvatar(address) {
     const avatarInfo = await this.rpc.avatar.getAvatarInfo(address);
     return new BaseGroupAvatarClient(address, this.core, this.contractRunner, avatarInfo);
+  }
+
+  async getBaseGroupAvatar(address) {
+    return this.getAvatar(address);
   }
 }
