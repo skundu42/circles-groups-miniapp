@@ -355,6 +355,10 @@
                                     autocomplete="off" />
                                 <button id="add-member-btn" class="btn-inline btn-small">Add</button>
                             </div>
+                            <label class="checkbox-inline member-search-filter" for="member-include-v1">
+                                <input id="member-include-v1" type="checkbox" />
+                                <span>Include v1 users</span>
+                            </label>
                         </div>
 
                         <div id="member-search-results" class="stack-list"></div>
@@ -363,13 +367,13 @@
                         </div>
                     </div>
 
-	                    <div id="group-tokens-panel" class="panel management-detail hidden">
-	                        <div class="panel-head">
-	                            <h2 id="group-token-panel-title">Manage Treasury Operations</h2>
-	                            <div class="management-panel-actions">
-	                                <button type="button" class="btn-ghost btn-small" data-management-back="1">Back</button>
-	                            </div>
-	                        </div>
+                    <div id="group-tokens-panel" class="panel management-detail hidden">
+                        <div class="panel-head">
+                            <h2 id="group-token-panel-title">Manage Treasury Operations</h2>
+                            <div class="management-panel-actions">
+                                <button type="button" class="btn-ghost btn-small" data-management-back="1">Back</button>
+                            </div>
+                        </div>
                         <div class="info-box">
                             In this section you can convert your group's fees to your group's token and send it to an
                             address of your choice.
@@ -399,29 +403,30 @@
                             <button id="collect-fees-btn" class="btn-primary" disabled>Convert Fees</button>
                         </div>
 
-	                        <div class="management-subsection">
-	                            <div class="management-subsection-header">
-	                                <h3 id="group-token-send-title" class="management-subsection-title">Send Token</h3>
-	                                <div class="detail-card send-availability-card">
-	                                    <span class="detail-label">Available</span>
-	                                    <div id="fee-address-group-token-display" class="detail-value">—</div>
-	                                </div>
-	                            </div>
-	                            <div class="field">
-	                                <label for="send-recipient">Recipient</label>
-	                                <input id="send-recipient" type="text" placeholder="Search name or paste 0x…"
-	                                    autocomplete="off" />
-	                            </div>
-	                            <div id="send-search-results" class="stack-list"></div>
-	                            <div class="field">
-	                                <label id="send-amount-label" for="send-amount">Amount</label>
-	                                <div class="input-action-field">
-	                                    <input id="send-amount" type="text" placeholder="0.0" autocomplete="off" />
-	                                    <button id="send-max-btn" type="button" class="btn-tonal btn-small input-action-btn">Max</button>
-	                                </div>
-	                            </div>
-	                            <button id="send-group-btn" class="btn-primary">Send Token</button>
-	                        </div>
+                        <div class="management-subsection">
+                            <div class="management-subsection-header">
+                                <h3 id="group-token-send-title" class="management-subsection-title">Send Token</h3>
+                                <div class="detail-card send-availability-card">
+                                    <span class="detail-label">Available</span>
+                                    <div id="fee-address-group-token-display" class="detail-value">—</div>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="send-recipient">Recipient</label>
+                                <input id="send-recipient" type="text" placeholder="Search name or paste 0x…"
+                                    autocomplete="off" />
+                            </div>
+                            <div id="send-search-results" class="stack-list"></div>
+                            <div class="field">
+                                <label id="send-amount-label" for="send-amount">Amount</label>
+                                <div class="input-action-field">
+                                    <input id="send-amount" type="text" placeholder="0.0" autocomplete="off" />
+                                    <button id="send-max-btn" type="button"
+                                        class="btn-tonal btn-small input-action-btn">Max</button>
+                                </div>
+                            </div>
+                            <button id="send-group-btn" class="btn-primary">Send Token</button>
+                        </div>
                     </div>
                 </div>
             </div>

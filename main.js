@@ -42,6 +42,16 @@ const MAX_GROUP_NAME_LENGTH = 19;
 const MEMBER_PAGE_LIMIT = 50;
 const GROUP_PAGE_LIMIT = 50;
 const SAFE_MULTICALL_BATCH_SIZE = 40;
+const MEMBER_SEARCH_V2_AVATAR_TYPES = [
+  'CrcV2_RegisterHuman',
+  'CrcV2_RegisterGroup',
+  'CrcV2_RegisterOrganization',
+];
+const MEMBER_SEARCH_V1_AND_V2_AVATAR_TYPES = [
+  ...MEMBER_SEARCH_V2_AVATAR_TYPES,
+  'CrcV1_Signup',
+  'CrcV1_OrganizationSignup',
+];
 const USER_OPERATION_EVENT = parseAbiItem(
   'event UserOperationEvent(bytes32 indexed userOpHash, address indexed sender, address indexed paymaster, uint256 nonce, bool success, uint256 actualGasCost, uint256 actualGasUsed)'
 );
@@ -199,6 +209,7 @@ const collectFeesMaxBtn = document.getElementById('collect-fees-max-btn');
 const collectFeesBtn = document.getElementById('collect-fees-btn');
 
 const memberQueryInput = document.getElementById('member-query');
+const memberIncludeV1Input = document.getElementById('member-include-v1');
 const addMemberBtn = document.getElementById('add-member-btn');
 const memberSearchResultsEl = document.getElementById('member-search-results');
 const membersListEl = document.getElementById('members-list');
@@ -1391,13 +1402,20 @@ async function loadAllPages(query, maxPages = 6) {
   return rows;
 }
 
-async function resolveAddress(rawInput) {
+function getMemberSearchAvatarTypes() {
+  return memberIncludeV1Input?.checked
+    ? MEMBER_SEARCH_V1_AND_V2_AVATAR_TYPES
+    : MEMBER_SEARCH_V2_AVATAR_TYPES;
+}
+
+async function resolveAddress(rawInput, options = {}) {
+  const { avatarTypes } = options;
   const query = String(rawInput || '').trim();
   if (!query) throw new Error('Enter a Circles address or searchable name.');
   if (isAddress(query)) return getAddress(query);
   if (!humanSdk) throw new Error('Connected account is not ready.');
 
-  const results = await humanSdk.rpc.profile.searchByAddressOrName(query, 20, 0);
+  const results = await humanSdk.rpc.profile.searchByAddressOrName(query, 20, 0, avatarTypes);
   const exactMatch = results.find((entry) => {
     const name = String(entry?.name || '').trim().toLowerCase();
     const registeredName = String(entry?.registeredName || '').trim().toLowerCase();
@@ -2097,6 +2115,7 @@ async function renderMemberSearchResults(results) {
 
 async function updateMemberSearchResults() {
   const query = memberQueryInput.value.trim();
+  const avatarTypes = getMemberSearchAvatarTypes();
   if (memberSearchDebounceTimer) {
     clearTimeout(memberSearchDebounceTimer);
     memberSearchDebounceTimer = null;
@@ -2117,7 +2136,7 @@ async function updateMemberSearchResults() {
   memberSearchDebounceTimer = setTimeout(async () => {
     try {
       if (!humanSdk) return;
-      const results = await humanSdk.rpc.profile.searchByAddressOrName(query, 20, 0);
+      const results = await humanSdk.rpc.profile.searchByAddressOrName(query, 20, 0, avatarTypes);
       if (requestId !== memberSearchRequestId) return;
       await renderMemberSearchResults(results);
     } catch {
@@ -2208,7 +2227,7 @@ async function addMember(preselectedAddress = null) {
   try {
     memberAddress = preselectedAddress
       ? getAddress(preselectedAddress)
-      : await resolveAddress(memberQueryInput.value);
+      : await resolveAddress(memberQueryInput.value, { avatarTypes: getMemberSearchAvatarTypes() });
   } catch (err) {
     showResult('error', decodeError(err));
     return;
@@ -3046,6 +3065,7 @@ addOwnerSafeBtn.addEventListener('click', addOwnerToOwnerSafe);
 saveProfileBtn.addEventListener('click', saveProfile);
 
 memberQueryInput.addEventListener('input', updateMemberSearchResults);
+memberIncludeV1Input?.addEventListener('change', updateMemberSearchResults);
 addMemberBtn.addEventListener('click', () => addMember());
 membersPrevBtn.addEventListener('click', () => {
   if (currentMembersPageIndex === 0) return;

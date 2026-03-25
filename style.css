@@ -707,6 +707,12 @@ input {
   font-size: 13px;
 }
 
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 textarea {
   resize: vertical;
   min-height: 100px;
@@ -750,6 +756,19 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.member-search-filter {
+  margin-top: 10px;
 }
 
 /* ── Buttons ── */
