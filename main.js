@@ -664,13 +664,51 @@ function parseCirclesInputToAtto(value) {
   );
 }
 
+function sanitizeAddressInput(value) {
+  return String(value || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+}
+
+function parseAddressInput(value) {
+  const trimmed = sanitizeAddressInput(value);
+  if (!trimmed) throw new Error('Address required.');
+
+  if (isAddress(trimmed)) {
+    return getAddress(trimmed);
+  }
+
+  const condensed = trimmed.replace(/\s+/g, '');
+  if (isAddress(condensed, { strict: false })) {
+    return getAddress(condensed.toLowerCase());
+  }
+
+  throw new Error('Invalid address.');
+}
+
+function looksLikeAddressInput(value) {
+  try {
+    parseAddressInput(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeAddressList(values) {
   const seen = new Set();
   const out = [];
 
   for (const value of values || []) {
-    if (!value || typeof value !== 'string' || !isAddress(value)) continue;
-    const normalized = getAddress(value);
+    if (!value || typeof value !== 'string') continue;
+
+    let normalized;
+    try {
+      normalized = parseAddressInput(value);
+    } catch {
+      continue;
+    }
+
     if (seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
@@ -1412,7 +1450,9 @@ async function resolveAddress(rawInput, options = {}) {
   const { avatarTypes } = options;
   const query = String(rawInput || '').trim();
   if (!query) throw new Error('Enter a Circles address or searchable name.');
-  if (isAddress(query)) return getAddress(query);
+  try {
+    return parseAddressInput(query);
+  } catch { }
   if (!humanSdk) throw new Error('Connected account is not ready.');
 
   const results = await humanSdk.rpc.profile.searchByAddressOrName(query, 20, 0, avatarTypes);
@@ -2026,8 +2066,8 @@ async function updateOwnerSafeSearchResults() {
     return;
   }
 
-  if (isAddress(query)) {
-    clearOwnerSafeSearchResults('Address detected. Click Add Owner.');
+  if (looksLikeAddressInput(query)) {
+    clearOwnerSafeSearchResults('Address detected. Click to Add Admin.');
     return;
   }
 
@@ -2126,7 +2166,7 @@ async function updateMemberSearchResults() {
     return;
   }
 
-  if (isAddress(query)) {
+  if (looksLikeAddressInput(query)) {
     clearMemberSearchResults('Address detected. Click Add to trust this member.');
     return;
   }
@@ -2195,7 +2235,7 @@ async function updateSendSearchResults() {
     return;
   }
 
-  if (isAddress(query)) {
+  if (looksLikeAddressInput(query)) {
     clearSendSearchResults('Address detected. Enter an amount and send.');
     return;
   }
@@ -2432,7 +2472,7 @@ async function updateGroupAddressSetting({
 
   let nextAddress;
   try {
-    nextAddress = getAddress(String(inputEl?.value || '').trim());
+    nextAddress = parseAddressInput(inputEl?.value);
   } catch {
     showResult('error', emptyError);
     return;
@@ -2475,7 +2515,7 @@ async function updateGroupOwner() {
 
   let nextOwner;
   try {
-    nextOwner = getAddress(String(ownerSafeInput.value || '').trim());
+    nextOwner = parseAddressInput(ownerSafeInput.value);
   } catch {
     showResult('error', 'Enter a valid owner Safe address.');
     return;
@@ -2574,7 +2614,7 @@ async function updateMembershipCondition(enabled) {
 
   let condition;
   try {
-    condition = getAddress(String(membershipConditionInput?.value || '').trim());
+    condition = parseAddressInput(membershipConditionInput?.value);
   } catch {
     showResult('error', 'Enter a valid membership condition address.');
     return;
@@ -2621,15 +2661,18 @@ async function updateMembershipCondition(enabled) {
   }
 }
 
-async function addOwnerToOwnerSafe(rawOwner = addOwnerInput.value) {
+async function addOwnerToOwnerSafe(rawOwner) {
   if (!activeOwnerSafe || !isAddress(activeOwnerSafe)) {
     showResult('error', 'This group does not expose a manageable owner Safe.');
     return;
   }
 
+  const ownerInput =
+    rawOwner && typeof rawOwner === 'object' && 'type' in rawOwner ? addOwnerInput.value : rawOwner;
+
   let nextOwner;
   try {
-    nextOwner = getAddress(String(rawOwner || '').trim());
+    nextOwner = parseAddressInput(ownerInput ?? addOwnerInput.value);
   } catch {
     showResult('error', 'Enter a valid owner address.');
     return;
@@ -3061,7 +3104,7 @@ collectFeesBtn.addEventListener('click', collectFees);
 enableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(true));
 disableMembershipConditionBtn.addEventListener('click', () => updateMembershipCondition(false));
 addOwnerInput.addEventListener('input', updateOwnerSafeSearchResults);
-addOwnerSafeBtn.addEventListener('click', addOwnerToOwnerSafe);
+addOwnerSafeBtn.addEventListener('click', () => void addOwnerToOwnerSafe());
 saveProfileBtn.addEventListener('click', saveProfile);
 
 memberQueryInput.addEventListener('input', updateMemberSearchResults);
