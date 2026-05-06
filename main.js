@@ -103,6 +103,7 @@ let currentMembersPageIndex = 0;
 let membersHasMorePages = false;
 let loadedMembersGroupAddress = null;
 let membersLoadRequestId = 0;
+let selectedMembers = new Set();
 let ownerSafeOwners = [];
 let ownerSafeThreshold = null;
 let activeMembershipConditions = [];
@@ -217,6 +218,10 @@ const membersTotalCountEl = document.getElementById('members-total-count');
 const membersPageLabelEl = document.getElementById('members-page-label');
 const membersPrevBtn = document.getElementById('members-prev-btn');
 const membersNextBtn = document.getElementById('members-next-btn');
+const membersSelectionToolbarEl = document.getElementById('members-selection-toolbar');
+const membersSelectAllInput = document.getElementById('members-select-all');
+const membersSelectionCountEl = document.getElementById('members-selection-count');
+const membersRemoveSelectedBtn = document.getElementById('members-remove-selected-btn');
 
 const groupTokenCardTitleEl = document.getElementById('group-token-card-title');
 const groupTokenCardCopyEl = document.getElementById('group-token-card-copy');
@@ -426,11 +431,13 @@ function resetMembersState() {
   currentMembersPageIndex = 0;
   membersQuery = null;
   loadedMembersGroupAddress = null;
+  selectedMembers = new Set();
   membersListEl.innerHTML = '<p class="muted">Open Manage Group Members to load members.</p>';
   membersTotalCountEl.textContent = '0 members';
   membersPageLabelEl.textContent = 'Page 1';
   membersPrevBtn.disabled = true;
   membersNextBtn.disabled = true;
+  updateMembersSelectionUI();
 }
 
 function resetOwnerSafeState() {
@@ -1918,14 +1925,20 @@ function renderMembersPage() {
   const rows = memberPages[currentMembersPageIndex] || [];
   if (!rows.length) {
     membersListEl.innerHTML = '<p class="muted">No members yet.</p>';
+    updateMembersSelectionUI();
     return;
   }
 
   membersListEl.innerHTML = rows
     .map((row) => {
       const memberLabel = memberNamesByAddress.get(row.member.toLowerCase()) || row.member;
+      const key = row.member.toLowerCase();
+      const checked = selectedMembers.has(key) ? 'checked' : '';
       return `
-        <div class="list-row search-result-row">
+        <div class="list-row search-result-row member-row">
+          <label class="member-row-select checkbox-inline">
+            <input type="checkbox" class="member-select-checkbox" data-member="${escapeHtml(row.member)}" ${checked} />
+          </label>
           <div class="list-row-main">
             <div class="list-row-title">${escapeHtml(memberLabel)}</div>
             <div class="list-row-meta mono">${escapeHtml(row.member)}</div>
@@ -1937,8 +1950,59 @@ function renderMembersPage() {
     .join('');
 
   membersListEl.querySelectorAll('.remove-member-btn').forEach((button) => {
-    button.addEventListener('click', () => removeMember(button.dataset.member));
+    button.addEventListener('click', () => removeMembers([button.dataset.member]));
   });
+
+  membersListEl.querySelectorAll('.member-select-checkbox').forEach((input) => {
+    input.addEventListener('change', () => {
+      const key = String(input.dataset.member || '').toLowerCase();
+      if (!key) return;
+      if (input.checked) selectedMembers.add(key);
+      else selectedMembers.delete(key);
+      updateMembersSelectionUI();
+    });
+  });
+
+  updateMembersSelectionUI();
+}
+
+function getCurrentMemberPageAddresses() {
+  const rows = memberPages[currentMembersPageIndex] || [];
+  return rows.map((row) => row.member);
+}
+
+function updateMembersSelectionUI() {
+  if (!membersSelectionToolbarEl) return;
+
+  const pageAddresses = getCurrentMemberPageAddresses();
+  const hasRows = pageAddresses.length > 0;
+
+  if (!hasRows && selectedMembers.size === 0) {
+    membersSelectionToolbarEl.classList.add('hidden');
+  } else {
+    membersSelectionToolbarEl.classList.remove('hidden');
+  }
+
+  const pageKeysSelected = pageAddresses.filter((addr) =>
+    selectedMembers.has(addr.toLowerCase())
+  ).length;
+
+  if (membersSelectAllInput) {
+    membersSelectAllInput.disabled = !hasRows;
+    membersSelectAllInput.checked = hasRows && pageKeysSelected === pageAddresses.length;
+    membersSelectAllInput.indeterminate =
+      pageKeysSelected > 0 && pageKeysSelected < pageAddresses.length;
+  }
+
+  const totalSelected = selectedMembers.size;
+  if (membersSelectionCountEl) {
+    membersSelectionCountEl.textContent = `${totalSelected} selected`;
+  }
+  if (membersRemoveSelectedBtn) {
+    membersRemoveSelectedBtn.disabled = totalSelected === 0;
+    membersRemoveSelectedBtn.textContent =
+      totalSelected > 1 ? `Remove ${totalSelected} selected` : 'Remove selected';
+  }
 }
 
 async function ensureMembersPage(pageIndex) {
@@ -1990,6 +2054,7 @@ async function loadMembers() {
   memberNamesByAddress = new Map();
   membersHasMorePages = false;
   currentMembersPageIndex = 0;
+  selectedMembers = new Set();
   membersQuery = humanSdk.groups.getMembers(groupAddress, MEMBER_PAGE_LIMIT);
   loadedMembersGroupAddress = null;
   membersListEl.innerHTML = '<p class="muted">Loading members…</p>';
@@ -2293,24 +2358,64 @@ async function addMember(preselectedAddress = null) {
   }
 }
 
-async function removeMember(rawAddress) {
-  if (!activeGroupAvatar || !isAddress(rawAddress)) {
-    showResult('error', 'Member address is invalid.');
+async function removeMembers(rawAddresses) {
+  if (!activeGroupAvatar) {
+    showResult('error', 'Open a group first.');
     return;
   }
 
-  showResult('pending', `Removing member ${rawAddress}…`);
+  const addresses = [];
+  const seen = new Set();
+  for (const raw of rawAddresses || []) {
+    if (!isAddress(raw)) continue;
+    const checksummed = getAddress(raw);
+    const key = checksummed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    addresses.push(checksummed);
+  }
+
+  if (!addresses.length) {
+    showResult('error', 'No valid member addresses to remove.');
+    return;
+  }
+
+  const isBatch = addresses.length > 1;
+  const confirmed = await showConfirmModal({
+    title: isBatch ? `Remove ${addresses.length} members?` : 'Remove member?',
+    message: isBatch
+      ? `This will untrust ${addresses.length} members in a single transaction.`
+      : `This will untrust ${addresses[0]}.`,
+    confirmLabel: 'Remove',
+  });
+  if (!confirmed) return;
+
+  if (membersRemoveSelectedBtn) membersRemoveSelectedBtn.disabled = true;
+  showResult(
+    'pending',
+    isBatch ? `Removing ${addresses.length} members…` : `Removing member ${addresses[0]}…`
+  );
 
   try {
     lastTxHashes = [];
-    await activeGroupAvatar.trust.remove(getAddress(rawAddress));
+    await activeGroupAvatar.trust.remove(addresses);
     const links = lastTxHashes.length ? `<br>${txLinks(lastTxHashes)}` : '';
-    showResult('success', `Member removed: ${rawAddress}.${links}`);
-    setActiveMemberCount(Math.max(0, getMembersTotalCount() - 1));
+    showResult(
+      'success',
+      isBatch
+        ? `Removed ${addresses.length} members.${links}`
+        : `Member removed: ${addresses[0]}.${links}`
+    );
+    for (const addr of addresses) {
+      selectedMembers.delete(addr.toLowerCase());
+    }
+    setActiveMemberCount(Math.max(0, getMembersTotalCount() - addresses.length));
     updateMembersToolbar();
     await loadMembers();
   } catch (err) {
-    showResult('error', `Could not remove member: ${decodeError(err)}`);
+    showResult('error', `Could not remove member${isBatch ? 's' : ''}: ${decodeError(err)}`);
+  } finally {
+    updateMembersSelectionUI();
   }
 }
 
@@ -3116,6 +3221,25 @@ membersPrevBtn.addEventListener('click', () => {
 });
 membersNextBtn.addEventListener('click', () => {
   goToMembersPage(currentMembersPageIndex + 1);
+});
+
+membersSelectAllInput?.addEventListener('change', () => {
+  const pageAddresses = getCurrentMemberPageAddresses();
+  if (membersSelectAllInput.checked) {
+    for (const addr of pageAddresses) selectedMembers.add(addr.toLowerCase());
+  } else {
+    for (const addr of pageAddresses) selectedMembers.delete(addr.toLowerCase());
+  }
+  membersListEl.querySelectorAll('.member-select-checkbox').forEach((input) => {
+    const key = String(input.dataset.member || '').toLowerCase();
+    input.checked = selectedMembers.has(key);
+  });
+  updateMembersSelectionUI();
+});
+
+membersRemoveSelectedBtn?.addEventListener('click', () => {
+  if (!selectedMembers.size) return;
+  void removeMembers(Array.from(selectedMembers));
 });
 
 sendRecipientInput.addEventListener('input', updateSendSearchResults);
