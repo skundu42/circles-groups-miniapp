@@ -40,8 +40,12 @@ class BaseGroupAvatarClient {
     },
     remove: async (avatar) => {
       const avatars = Array.isArray(avatar) ? avatar : [avatar];
-      const transactions = avatars.map((trustee) => this.baseGroup.trust(trustee, 0n));
-      return this.runner.sendTransaction(transactions);
+      if (!avatars.length) return [];
+      const tx =
+        avatars.length === 1
+          ? this.baseGroup.trust(avatars[0], 0n)
+          : this.baseGroup.trustBatchWithConditions(avatars, 0n);
+      return this.runner.sendTransaction([tx]);
     },
     isTrusting: async (otherAvatar) => {
       return this.core.hubV2.isTrusted(this.address, otherAvatar);
